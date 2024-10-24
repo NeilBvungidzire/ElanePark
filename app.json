@@ -12,16 +12,37 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs access to location to show nearby parking spots."
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyD2Mjwic3Wz4Ji4jVYZ8Y7m3coAgfaTluw"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.elanePark",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD2Mjwic3Wz4Ji4jVYZ8Y7m3coAgfaTluw"
+        }
       }
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b095eea3-6da8-4f1c-a609-b1f244c42b5e"
+      }
     }
   }
 }
