@@ -5,7 +5,6 @@ import { Reservation } from '../entity/Reservation';
 import { Transaction } from '../entity/Transaction';
 import { ParkingBay } from '../entity/ParkingBay';
 import ormConfig from '../ormconfig';
-import { z } from 'zod';
 import { Like, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import bcrypt from 'react-native-bcrypt';
 
@@ -23,8 +22,19 @@ class DatabaseError extends Error {
 
 export const initializeDatabase = async () => {
   try {
-    await dataSource.initialize();
-    console.log('Database connection established');
+    if (!dataSource.isInitialized) {
+      await dataSource.initialize();
+      console.log('Database connection established');
+      
+      const parkingBayCount = await dataSource.getRepository(ParkingBay).count();
+      if (parkingBayCount === 0) {
+        await initializeGweruParkingBays();
+      } else {
+        console.log('Parking bays already exist, skipping initialization');
+      }
+    } else {
+      console.log('Database already initialized');
+    }
   } catch (error) {
     console.error('Error connecting to the database', error);
     throw new DatabaseError('Failed to initialize database');
@@ -410,19 +420,69 @@ export const initializeGweruParkingBays = async (): Promise<void> => {
       { title: "Gweru Industrial Area 2", latitude: -19.459567, longitude: 29.826789, available: true },
     ];
 
-    for (const bay of gweruParkingBays) {
-      const existingBay = await parkingBayRepository.findOne({ where: { title: bay.title } });
-      if (!existingBay) {
-        await parkingBayRepository.save(bay);
-      }
-    }
+    const existingBays = await parkingBayRepository.find();
+    const existingTitles = new Set(existingBays.map(bay => bay.title));
 
-    console.log('Gweru parking bays initialized successfully');
+    const newBays = gweruParkingBays.filter(bay => !existingTitles.has(bay.title));
+
+    if (newBays.length > 0) {
+      await parkingBayRepository.save(newBays);
+      console.log(`${newBays.length} new Gweru parking bays initialized successfully`);
+    } else {
+      console.log('No new Gweru parking bays to initialize');
+    }
   } catch (error: any) {
     console.error('Error initializing Gweru parking bays:', error);
     throw new DatabaseError('Failed to initialize Gweru parking bays');
   }
 };
+
+export const getTodayBookings = async (): Promise<Reservation[]> => {
+    const reservationRepository = dataSource.getRepository(Reservation);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return reservationRepository.find({
+        where: {
+            startTime: Between(today, tomorrow)
+        }
+    });
+};
+
+export const getReservationsTimeSeries = async (): Promise<{ date: string, count: number }[]> => {
+    const reservationRepository = dataSource.getRepository(Reservation);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const result = await reservationRepository
+        .createQueryBuilder('reservation')
+        .select("DATE(reservation.startTime)", "date")
+        .addSelect("COUNT(*)", "count")
+        .where("reservation.startTime >= :thirtyDaysAgo", { thirtyDaysAgo })
+        .groupBy("DATE(reservation.startTime)")
+        .orderBy("DATE(reservation.startTime)", "ASC")
+        .getRawMany();
+
+    return result.map(item => ({
+        date: item.date,
+        count: parseInt(item.count)
+    }));
+};
+
+export const getTotalRevenue = async (): Promise<number> => {
+    const transactionRepository = dataSource.getRepository(Transaction);
+    const result = await transactionRepository
+        .createQueryBuilder('transaction')
+        .select("SUM(transaction.amount)", "totalRevenue")
+        .where("transaction.status = :status", { status: 'completed' })
+        .getRawOne();
+
+    return result.totalRevenue || 0;
+};
+
+
 
 
 
