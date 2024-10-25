@@ -3,11 +3,12 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, Alert, TextInput, 
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { getAllParkingBays, getAvailableTimeSlots, createReservation, checkAndLockTimeSlot } from '../database/database';
+import { getAllParkingBays, getAvailableTimeSlots, createReservation, checkAndLockTimeSlot, getReservationsForParkingBay } from '../database/database';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../auth/AuthContext';
 import { ParkingBay as DBParkingBay } from '../entity/ParkingBay';
 import LoadingScreen from './LoadingScreen';
+import { generateRandomLoyaltyPoints } from '../utils/loyaltyPoints'; 
 
 type ParkingBay = {
     id: number;
@@ -114,6 +115,10 @@ export default function ParkScreen() {
     }, [searchQuery, parkingBays]);
 
     const handleSelectParking = async (parking: ParkingBay) => {
+        if (!parking.available) {
+            Alert.alert("Not Available", "This parking bay is currently not available.");
+            return;
+        }
         setSelectedParking(parking);
         await fetchAvailableSlots(parking.id, selectedDateTime);
     };
@@ -121,15 +126,23 @@ export default function ParkScreen() {
     const fetchAvailableSlots = async (parkingBayId: number, date: Date) => {
         try {
             const formattedDate = date.toISOString().split('T')[0];
+            const existingReservations = await getReservationsForParkingBay(parkingBayId, formattedDate);
             const slots = await getAvailableTimeSlots(parkingBayId, formattedDate);
-            setAvailableSlots(slots);
-            if (slots.length > 0) {
-                setSelectedSlot(slots[0]);
-                handleSlotSelection(slots[0]);
+            
+            // Filter out slots that overlap with existing reservations
+            const availableSlots = slots.filter(slot => 
+                !isSlotOverlapping(slot, existingReservations)
+            );
+
+            setAvailableSlots(availableSlots);
+            if (availableSlots.length > 0) {
+                setSelectedSlot(availableSlots[0]);
+                handleSlotSelection(availableSlots[0]);
             } else {
                 setSelectedSlot(null);
                 setDuration(0);
                 setBookingCost(0);
+                Alert.alert("No Slots Available", "There are no available slots for this date. Please choose another date or parking bay.");
             }
         } catch (error) {
             console.error("Error fetching available time slots:", error);
@@ -138,6 +151,18 @@ export default function ParkScreen() {
             setDuration(0);
             setBookingCost(0);
         }
+    };
+
+    const isSlotOverlapping = (slot: { startTime: string, endTime: string }, reservations: any[]) => {
+        const slotStart = new Date(slot.startTime).getTime();
+        const slotEnd = new Date(slot.endTime).getTime();
+        
+        return reservations.some(reservation => {
+            const reservationStart = new Date(reservation.startTime).getTime();
+            const reservationEnd = new Date(reservation.endTime).getTime();
+            
+            return (slotStart < reservationEnd && slotEnd > reservationStart);
+        });
     };
 
     const handleSlotSelection = (slot: { startTime: string, endTime: string }) => {
@@ -183,20 +208,25 @@ export default function ParkScreen() {
             const paymentSuccess = await simulatePayment(bookingCost);
             
             if (paymentSuccess && user && user.id) {
+                const loyaltyPoints = generateRandomLoyaltyPoints(bookingCost);
+                
                 const reservation = {
                     userId: user.id,
                     parkingBayId: selectedParking!.id,
                     startTime: new Date(selectedSlot!.startTime),
                     endTime: new Date(selectedSlot!.endTime),
                     carPlate: carPlate,
+                    loyaltyPoints: loyaltyPoints, // Add loyalty points to the reservation
                 };
 
                 const result = await createReservation(reservation);
                 
                 if (typeof result === 'number') {
-                    Alert.alert("Success", "Payment successful and reservation created", [
-                        { text: "OK", onPress: () => openDirections() }
-                    ]);
+                    Alert.alert(
+                        "Success", 
+                        `Payment successful and reservation created. You've earned ${loyaltyPoints} loyalty points!`,
+                        [{ text: "OK", onPress: () => openDirections() }]
+                    );
                 } else {
                     throw new Error("Failed to create reservation");
                 }
@@ -257,7 +287,7 @@ export default function ParkScreen() {
     const renderParkingItem = ({ item }: { item: ParkingBay }) => (
         <TouchableOpacity 
             style={[styles.parkingItem, !item.available && styles.unavailableItem]}
-            onPress={() => item.available && handleSelectParking(item)}
+            onPress={() => handleSelectParking(item)}
         >
             <View style={styles.parkingInfo}>
                 <Text style={styles.parkingTitle}>{item.title}</Text>
@@ -328,39 +358,45 @@ export default function ParkScreen() {
                                 onChange={handleDateTimeChange}
                             />
                         )}
-                        <View style={styles.durationContainer}>
-                            <Text style={styles.labelText}>Duration (hours): </Text>
-                            <TextInput
-                                style={styles.durationInput}
-                                keyboardType="numeric"
-                                value={duration.toString()}
-                                onChangeText={(text) => handleDurationChange(parseInt(text) || 1)}
-                            />
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Car Plate Number"
-                            value={carPlate}
-                            onChangeText={setCarPlate}
-                        />
-                        <Text style={styles.costText}>Booking Cost: ${bookingCost.toFixed(2)}</Text>
-                        {paymentStatus && (
-                            <Text style={[styles.paymentStatus, 
-                                paymentStatus === 'completed' ? styles.successText : 
-                                paymentStatus === 'failed' ? styles.errorText : 
-                                styles.processingText]}>
-                                Payment Status: {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
-                            </Text>
+                        {availableSlots.length > 0 ? (
+                            <>
+                                <View style={styles.durationContainer}>
+                                    <Text style={styles.labelText}>Duration (hours): </Text>
+                                    <TextInput
+                                        style={styles.durationInput}
+                                        keyboardType="numeric"
+                                        value={duration.toString()}
+                                        onChangeText={(text) => handleDurationChange(parseInt(text) || 1)}
+                                    />
+                                </View>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Car Plate Number"
+                                    value={carPlate}
+                                    onChangeText={setCarPlate}
+                                />
+                                <Text style={styles.costText}>Booking Cost: ${bookingCost.toFixed(2)}</Text>
+                                {paymentStatus && (
+                                    <Text style={[styles.paymentStatus, 
+                                        paymentStatus === 'completed' ? styles.successText : 
+                                        paymentStatus === 'failed' ? styles.errorText : 
+                                        styles.processingText]}>
+                                        Payment Status: {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
+                                    </Text>
+                                )}
+                                <TouchableOpacity 
+                                    style={[styles.bookButton, paymentStatus === 'processing' && styles.disabledButton]} 
+                                    onPress={handleBookReservation}
+                                    disabled={paymentStatus === 'processing'}
+                                >
+                                    <Text style={styles.bookButtonText}>
+                                        {paymentStatus === 'processing' ? 'Processing...' : 'Book and Pay'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            <Text style={styles.noSlotsText}>No available slots for this date. Please choose another date or parking bay.</Text>
                         )}
-                        <TouchableOpacity 
-                            style={[styles.bookButton, paymentStatus === 'processing' && styles.disabledButton]} 
-                            onPress={handleBookReservation}
-                            disabled={paymentStatus === 'processing'}
-                        >
-                            <Text style={styles.bookButtonText}>
-                                {paymentStatus === 'processing' ? 'Processing...' : 'Book and Pay'}
-                            </Text>
-                        </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.backButton}
                             onPress={() => {
@@ -386,7 +422,7 @@ export default function ParkScreen() {
                                 </TouchableOpacity>
                             )}
                             keyExtractor={(item) => item.startTime}
-                            ListEmptyComponent={<Text style={styles.emptyText}>No available slots for this date</Text>}
+                            ListEmptyComponent={null}
                         />
                     </View>
                 ) : (
@@ -731,6 +767,13 @@ const styles = StyleSheet.create({
     cancelButtonText: {
         color: '#333',
         textAlign: 'center',
+        fontWeight: 'bold',
+    },
+    noSlotsText: {
+        textAlign: 'center',
+        marginTop: 20,
+        fontSize: 16,
+        color: '#89609E',
         fontWeight: 'bold',
     },
 });

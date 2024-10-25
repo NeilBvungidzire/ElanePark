@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView,
 import { checkCarReservation } from '../database/database';
 import { useAuth } from '../auth/AuthContext';
 import { Reservation } from '../entity/Reservation';
+import LoadingScreen from './LoadingScreen';
 
 export default function CheckParking() {
   const { user } = useAuth();
   const [carPlate, setCarPlate] = useState('');
   const [checkResult, setCheckResult] = useState<{ isValid: boolean; reservation?: Reservation } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleCheckReservation = async () => {
     if (!carPlate) {
@@ -16,6 +18,7 @@ export default function CheckParking() {
       return;
     }
 
+    setIsLoading(true);
     try {
       const result = await checkCarReservation(carPlate);
       setCheckResult(result);
@@ -28,6 +31,8 @@ export default function CheckParking() {
     } catch (error) {
       console.error('Error checking reservation:', error);
       Alert.alert('Error', 'Failed to check reservation. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -37,6 +42,10 @@ export default function CheckParking() {
     setCheckResult(null);
     setRefreshing(false);
   }, []);
+
+  if (isLoading) {
+    return <LoadingScreen message="Checking reservation..." />;
+  }
 
   return (
     <ScrollView 

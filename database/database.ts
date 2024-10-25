@@ -482,6 +482,28 @@ export const getTotalRevenue = async (): Promise<number> => {
     return result.totalRevenue || 0;
 };
 
+export const getReservationsForParkingBay = async (parkingBayId: number, date: string): Promise<Reservation[]> => {
+  try {
+    const reservationRepository = dataSource.getRepository(Reservation);
+    const startOfDay = new Date(`${date}T00:00:00`);
+    const endOfDay = new Date(`${date}T23:59:59`);
+
+    return await reservationRepository.find({
+      where: {
+        parkingBayId,
+        startTime: Between(startOfDay, endOfDay),
+        status: 'active',
+      },
+      order: { startTime: 'ASC' },
+    });
+  } catch (error: any) {
+    console.error('Error getting reservations for parking bay:', error);
+    throw new DatabaseError('Failed to get reservations for parking bay');
+  }
+};
+
+
+
 
 
 

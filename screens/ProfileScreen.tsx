@@ -2,10 +2,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, FlatList, TouchableOpacity, Dimensions, Alert, Linking, RefreshControl } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useAuth } from '../auth/AuthContext';
-import { getRecentReservations, getParkingBayById } from '../database/database';
+import { getRecentReservations, getParkingBayById, checkCarReservation, updateReservationStatus } from '../database/database';
 import { Reservation } from '../entity/Reservation';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import LoadingScreen from './LoadingScreen';
 
 const COLORS = {
   primary: '#4C1D1C',
@@ -29,18 +30,59 @@ interface ReservationWithBayDetails extends Reservation {
 
 export default function ProfileScreen() {
     const { user, signOut } = useAuth();
-    const [recentActivities, setRecentActivities] = useState<ReservationWithBayDetails[]>([]);
+    const [pastReservations, setPastReservations] = useState<ReservationWithBayDetails[]>([]);
+    const [activeReservations, setActiveReservations] = useState<ReservationWithBayDetails[]>([]);
     const [showMap, setShowMap] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{latitude: number, longitude: number} | null>(null);
     const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [activeReservation, setActiveReservation] = useState<ReservationWithBayDetails | null>(null);
 
     useEffect(() => {
         if (user) {
             loadRecentActivities();
             getUserLocation();
+            checkActiveReservation();
         }
     }, [user]);
+
+    const checkActiveReservation = async () => {
+        if (user && user.id) {
+            setIsLoading(true);
+            const result = await checkCarReservation(user.carPlate);
+            if (result.isValid && result.reservation) {
+                const parkingBay = await getParkingBayById(result.reservation.parkingBayId);
+                setActiveReservation({
+                    ...result.reservation,
+                    parkingBayName: parkingBay?.title || 'Unknown Location',
+                    latitude: parkingBay?.latitude || 0,
+                    longitude: parkingBay?.longitude || 0
+                });
+            } else {
+                setActiveReservation(null);
+            }
+            setIsLoading(false);
+        }
+    };
+
+    const handleCheckIn = async () => {
+        if (activeReservation) {
+            setIsLoading(true);
+            await updateReservationStatus(activeReservation.id, 'checked-in');
+            await checkActiveReservation();
+            setIsLoading(false);
+        }
+    };
+
+    const handleCheckOut = async () => {
+        if (activeReservation) {
+            setIsLoading(true);
+            await updateReservationStatus(activeReservation.id, 'completed');
+            await checkActiveReservation();
+            setIsLoading(false);
+        }
+    };
 
     const loadRecentActivities = async () => {
         if (user && user.id) {
@@ -54,7 +96,15 @@ export default function ProfileScreen() {
                     longitude: parkingBay?.longitude || 0
                 };
             }));
-            setRecentActivities(activitiesWithBayDetails);
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const past = activitiesWithBayDetails.filter(activity => new Date(activity.startTime) < today);
+            const active = activitiesWithBayDetails.filter(activity => new Date(activity.startTime) >= today);
+
+            setPastReservations(past);
+            setActiveReservations(active);
         }
     };
 
@@ -118,6 +168,26 @@ export default function ProfileScreen() {
         setRefreshing(false);
     }, [user]);
 
+    const renderReservationItem = (item: ReservationWithBayDetails, isPast: boolean) => (
+        <TouchableOpacity onPress={() => handleActivityPress(item.latitude, item.longitude)}>
+            <View style={[styles.activityCard, { backgroundColor: isPast ? COLORS.accent : COLORS.secondary }]}>
+                <Text style={[styles.activityLocation, { color: isPast ? COLORS.text : COLORS.surface }]}>{item.parkingBayName}</Text>
+                <Text style={[styles.activityDate, { color: isPast ? COLORS.text : COLORS.surface }]}>
+                    {new Date(item.startTime).toLocaleString()} - {new Date(item.endTime).toLocaleString()}
+                </Text>
+                <Text style={[styles.activityStatus, { color: isPast ? COLORS.text : COLORS.surface }]}>
+                    Status: <Text style={item.status === 'active' ? styles.completedStatus : styles.cancelledStatus}>
+                    {item.status}
+                </Text>
+                </Text>
+            </View>
+        </TouchableOpacity>
+    );
+
+    if (isLoading) {
+        return <LoadingScreen message="Loading your profile..." />;
+    }
+
     if (!user) {
         return <Text>Loading...</Text>;
     }
@@ -154,34 +224,58 @@ export default function ProfileScreen() {
                             <Text style={styles.statLabel}>Loyalty Points</Text>
                         </View>
                         <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{recentActivities.length}</Text>
-                            <Text style={styles.statLabel}>Recent Reservations</Text>
+                            <Text style={styles.statNumber}>{activeReservations.length}</Text>
+                            <Text style={styles.statLabel}>Active/Upcoming Reservations</Text>
                         </View>
                     </View>
                 </View>
 
-                <View style={[styles.recentActivitySection, { backgroundColor: COLORS.surface }]}>
-                    <Text style={[styles.sectionTitle, { color: COLORS.primary }]}>Recent Activity</Text>
-                    <FlatList
-                        data={recentActivities}
-                        keyExtractor={(item) => item.id?.toString() || ''}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity onPress={() => handleActivityPress(item.latitude, item.longitude)}>
-                                <View style={[styles.activityCard, { backgroundColor: COLORS.accent }]}>
-                                    <Text style={styles.activityLocation}>{item.parkingBayName}</Text>
-                                    <Text style={styles.activityDate}>
-                                        {new Date(item.startTime).toLocaleString()} - {new Date(item.endTime).toLocaleString()}
-                                    </Text>
-                                    <Text style={[styles.activityStatus, { color: COLORS.text }]}>
-                                        Status: <Text style={item.status === 'active' ? styles.completedStatus : styles.cancelledStatus}>
-                                        {item.status}
-                                    </Text>
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
+                {activeReservation && (
+                    <View style={[styles.activeReservationSection, { backgroundColor: COLORS.surface }]}>
+                        <Text style={[styles.sectionTitle, { color: COLORS.primary }]}>Active Reservation</Text>
+                        <Text style={styles.activeReservationText}>
+                            {activeReservation.parkingBayName}
+                        </Text>
+                        <Text style={styles.activeReservationText}>
+                            {new Date(activeReservation.startTime).toLocaleString()} - {new Date(activeReservation.endTime).toLocaleString()}
+                        </Text>
+                        <Text style={styles.activeReservationText}>
+                            Status: {activeReservation.status}
+                        </Text>
+                        {activeReservation.status === 'active' && (
+                            <Button mode="contained" onPress={handleCheckIn} style={styles.actionButton} color={COLORS.secondary}>
+                                Check In
+                            </Button>
                         )}
+                        {activeReservation.status === 'checked-in' && (
+                            <Button mode="contained" onPress={handleCheckOut} style={styles.actionButton} color={COLORS.secondary}>
+                                Check Out
+                            </Button>
+                        )}
+                    </View>
+                )}
+
+                <View style={[styles.reservationSection, { backgroundColor: COLORS.surface }]}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.primary }]}>Active/Upcoming Reservations</Text>
+                    <FlatList
+                        data={activeReservations}
+                        keyExtractor={(item) => item.id?.toString() || ''}
+                        renderItem={({ item }) => renderReservationItem(item, false)}
                         scrollEnabled={false}
                         nestedScrollEnabled={true}
+                        ListEmptyComponent={<Text style={styles.emptyListText}>No active or upcoming reservations</Text>}
+                    />
+                </View>
+
+                <View style={[styles.reservationSection, styles.pastReservationSection, { backgroundColor: COLORS.surface }]}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.primary }]}>Past Reservations</Text>
+                    <FlatList
+                        data={pastReservations}
+                        keyExtractor={(item) => item.id?.toString() || ''}
+                        renderItem={({ item }) => renderReservationItem(item, true)}
+                        scrollEnabled={false}
+                        nestedScrollEnabled={true}
+                        ListEmptyComponent={<Text style={styles.emptyListText}>No past reservations</Text>}
                     />
                 </View>
 
@@ -273,14 +367,17 @@ const styles = StyleSheet.create({
         color: '#666',
         marginTop: 5,
     },
-    recentActivitySection: {
-        backgroundColor: '#fff',
+    reservationSection: {
+        backgroundColor: COLORS.surface,
         padding: 15,
         borderRadius: 10,
+        marginBottom: 20,
+    },
+    pastReservationSection: {
+        marginTop: 20, // Add space above the past reservations section
     },
     activityCard: {
         marginBottom: 15,
-        backgroundColor: '#e0f7fa',
         padding: 10,
         borderRadius: 8,
     },
@@ -290,11 +387,9 @@ const styles = StyleSheet.create({
     },
     activityDate: {
         fontSize: 14,
-        color: '#666',
     },
     activityStatus: {
         fontSize: 14,
-        color: '#666',
     },
     completedStatus: {
         color: '#4CAF50',
@@ -309,5 +404,25 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 40,
         right: 20,
+    },
+    activeReservationSection: {
+        backgroundColor: '#fff',
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 20,
+    },
+    activeReservationText: {
+        fontSize: 16,
+        marginBottom: 5,
+    },
+    actionButton: {
+        marginTop: 10,
+    },
+    emptyListText: {
+        fontSize: 14,
+        color: COLORS.text,
+        fontStyle: 'italic',
+        textAlign: 'center',
+        marginTop: 10,
     },
 });

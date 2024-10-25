@@ -30,11 +30,7 @@ export default function ManageParkingBays() {
     const [refreshing, setRefreshing] = useState(false);
     
 
-    useEffect(() => {
-        fetchParkingBays();
-    }, []);
-
-    const fetchParkingBays = async () => {
+    const fetchParkingBays = useCallback(async () => {
         try {
             setIsLoading(true);
             const bays = await getAllParkingBays();
@@ -45,9 +41,13 @@ export default function ManageParkingBays() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const handleToggleAvailability = async (id: number, currentAvailability: boolean) => {
+    useEffect(() => {
+        fetchParkingBays();
+    }, [fetchParkingBays]);
+
+    const handleToggleAvailability = useCallback(async (id: number, currentAvailability: boolean) => {
         try {
             await updateParkingBayAvailability(id, !currentAvailability);
             fetchParkingBays();
@@ -55,18 +55,18 @@ export default function ManageParkingBays() {
             console.error("Error updating availability:", error);
             Alert.alert("Error", "Unable to update parking bay availability");
         }
-    };
+    }, [fetchParkingBays]);
 
-    const handleEditBay = (bay: ParkingBay) => {
+    const handleEditBay = useCallback((bay: ParkingBay) => {
         setEditingBay(bay);
         setTitle(bay.title);
         setLatitude(bay.latitude.toString());
         setLongitude(bay.longitude.toString());
         setPrice(bay.price.toString());
         setModalVisible(true);
-    };
+    }, []);
 
-    const handleSaveBay = async () => {
+    const handleSaveBay = useCallback(async () => {
         try {
             const bayData: ParkingBay = {
                 id: editingBay?.id ?? 0,
@@ -89,9 +89,9 @@ export default function ManageParkingBays() {
             console.error("Error saving parking bay:", error);
             Alert.alert("Error", "Unable to save parking bay");
         }
-    };
+    }, [editingBay, title, latitude, longitude, price, fetchParkingBays]);
 
-    const handleDeleteBay = async (id: number) => {
+    const handleDeleteBay = useCallback((id: number) => {
         Alert.alert(
             "Delete Parking Bay",
             "Are you sure you want to delete this parking bay?",
@@ -112,17 +112,25 @@ export default function ManageParkingBays() {
                 }
             ]
         );
-    };
+    }, [fetchParkingBays]);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await fetchParkingBays();
+        } catch (error) {
+            console.error("Error refreshing parking bays:", error);
+            Alert.alert("Error", "Unable to refresh parking bays");
+        } finally {
+            setRefreshing(false);
+        }
+    }, [fetchParkingBays]);
 
     const filteredBays = parkingBays.filter(bay => 
         bay.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    if (isLoading) {
-        return <LoadingScreen message="Loading parking bays..." />;
-    }
-
-    const renderParkingBayItem = ({ item }: { item: ParkingBay }) => (
+    const renderParkingBayItem = useCallback(({ item }: { item: ParkingBay }) => (
         <View style={styles.parkingItem}>
             <View style={styles.parkingInfo}>
                 <Text style={styles.parkingTitle}>{item.title}</Text>
@@ -144,19 +152,11 @@ export default function ManageParkingBays() {
                 </TouchableOpacity>
             </View>
         </View>
-    );
+    ), [handleToggleAvailability, handleEditBay, handleDeleteBay]);
 
-    const onRefresh = useCallback(async () => {
-        setRefreshing(true);
-        try {
-            await fetchParkingBays();
-        } catch (error) {
-            console.error("Error refreshing parking bays:", error);
-            Alert.alert("Error", "Unable to refresh parking bays");
-        } finally {
-            setRefreshing(false);
-        }
-    }, []);
+    if (isLoading) {
+        return <LoadingScreen message="Loading parking bays..." />;
+    }
 
     return (
         <SafeAreaView style={styles.safeArea}>
