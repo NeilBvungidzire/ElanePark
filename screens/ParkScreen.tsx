@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Linking, ScrollView, SafeAreaView, Modal } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Alert, TextInput, TouchableOpacity, Linking, ScrollView, SafeAreaView, Modal, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -7,6 +7,7 @@ import { getAllParkingBays, getAvailableTimeSlots, createReservation, checkAndLo
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../auth/AuthContext';
 import { ParkingBay as DBParkingBay } from '../entity/ParkingBay';
+import LoadingScreen from './LoadingScreen';
 
 type ParkingBay = {
     id: number;
@@ -36,22 +37,27 @@ export default function ParkScreen() {
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
-        fetchParkingBays();
-        getUserLocation();
+        loadInitialData();
     }, []);
 
-    useEffect(() => {
-        const filtered = parkingBays.filter(bay =>
-            bay.title.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        setFilteredBays(filtered);
-    }, [searchQuery, parkingBays]);
+    const loadInitialData = async () => {
+        setIsLoading(true);
+        try {
+            await fetchParkingBays();
+            await getUserLocation();
+        } catch (error) {
+            console.error("Error loading initial data:", error);
+            Alert.alert("Error", "Unable to load parking data");
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const fetchParkingBays = async () => {
         try {
-            setIsLoading(true);
             const dbParkingBays = await getAllParkingBays();
             const formattedBays: ParkingBay[] = dbParkingBays.map((bay: DBParkingBay) => ({
                 id: bay.id!,
@@ -65,8 +71,6 @@ export default function ParkScreen() {
             setFilteredBays(formattedBays);
         } catch (error) {
             Alert.alert("Error", "Unable to fetch parking bays");
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -89,6 +93,25 @@ export default function ParkScreen() {
             Alert.alert("Error", "Unable to get your current location");
         }
     };
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await loadInitialData();
+        } catch (error) {
+            console.error("Error refreshing data:", error);
+            Alert.alert("Error", "Unable to refresh data");
+        } finally {
+            setRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        const filtered = parkingBays.filter(bay =>
+            bay.title.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        setFilteredBays(filtered);
+    }, [searchQuery, parkingBays]);
 
     const handleSelectParking = async (parking: ParkingBay) => {
         setSelectedParking(parking);
@@ -254,16 +277,21 @@ export default function ParkScreen() {
     );
 
     if (isLoading) {
-        return (
-            <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#4A0E4E" />
-            </View>
-        );
+        return <LoadingScreen message="Finding available parking spots..." />;
     }
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={['#4A0E4E']} 
+                    />
+                }
+            >
                 {selectedParking ? (
                     <View>
                         <Text style={styles.headerText}>Booking Details</Text>

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, FlatList, TouchableOpacity, Dimensions, Alert, Linking } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, Image, StyleSheet, ScrollView, FlatList, TouchableOpacity, Dimensions, Alert, Linking, RefreshControl } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useAuth } from '../auth/AuthContext';
 import { getRecentReservations, getParkingBayById } from '../database/database';
@@ -33,6 +33,7 @@ export default function ProfileScreen() {
     const [showMap, setShowMap] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{latitude: number, longitude: number} | null>(null);
     const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -110,13 +111,30 @@ export default function ProfileScreen() {
         setSelectedLocation(null);
     };
 
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await loadRecentActivities();
+        await getUserLocation();
+        setRefreshing(false);
+    }, [user]);
+
     if (!user) {
         return <Text>Loading...</Text>;
     }
 
     return (
         <View style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={[styles.container, { backgroundColor: COLORS.background }]}>
+            <ScrollView 
+                contentContainerStyle={[styles.container, { backgroundColor: COLORS.background }]}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[COLORS.primary]}
+                        tintColor={COLORS.primary}
+                    />
+                }
+            >
                 <View style={[styles.profileSection, { backgroundColor: COLORS.surface }]}>
                     <Image source={{ uri: 'https://via.placeholder.com/150' }} style={styles.profileImage} />
                     <View style={styles.userInfo}>

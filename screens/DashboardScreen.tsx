@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { getTodayBookings, getReservationsTimeSeries, getTotalRevenue } from '../database/database';
 import { Reservation } from '../entity/Reservation'; 
+import LoadingScreen from './LoadingScreen'; 
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -20,14 +21,15 @@ export default function DashboardScreen() {
     });
     const [totalRevenue, setTotalRevenue] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         fetchDashboardData();
     }, []);
 
     const fetchDashboardData = async () => {
+        setIsLoading(true);
         try {
-            setIsLoading(true);
             const bookings = await getTodayBookings();
             const timeSeries = await getReservationsTimeSeries();
             const revenue = await getTotalRevenue();
@@ -45,16 +47,28 @@ export default function DashboardScreen() {
         }
     };
 
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchDashboardData();
+        setRefreshing(false);
+    }, []);
+
     if (isLoading) {
-        return (
-            <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#4A0E4E" />
-            </View>
-        );
+        return <LoadingScreen message="Loading dashboard data..." />;
     }
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView 
+            style={styles.container}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={["#4A0E4E"]}
+                    tintColor="#4A0E4E"
+                />
+            }
+        >
             <Text style={styles.headerText}>Dashboard</Text>
 
             <View style={styles.card}>

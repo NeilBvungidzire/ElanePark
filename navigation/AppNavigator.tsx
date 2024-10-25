@@ -13,6 +13,7 @@ import PaymentScreen from '../screens/PaymentScreen';
 import ParkScreen from '../screens/ParkScreen';
 import ManageParkingScreen from '../screens/ManageParkingBays';
 import CheckParkingScreen from '../screens/CheckParking';
+import DashboardScreen from '../screens/DashboardScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -29,6 +30,7 @@ const HomeStack = () => (
     <Stack.Screen name="Home" component={HomeScreen} />
     <Stack.Screen name="Payment" component={PaymentScreen} />
     <Stack.Screen name="Park" component={ParkScreen} />
+    <Stack.Screen name="Dashboard" component={DashboardScreen} />
   </Stack.Navigator>
 );
 
@@ -47,6 +49,8 @@ const TabNavigator = () => (
           iconName = focused ? 'car' : 'car-outline';
         } else if (route.name === 'CheckParking') {
           iconName = focused ? 'search' : 'search-outline';
+        } else if (route.name === 'Dashboard') {
+          iconName = focused ? 'analytics' : 'analytics-outline';
         }
 
         return <Ionicons name={iconName as any} size={size} color={color} />;
@@ -57,6 +61,7 @@ const TabNavigator = () => (
     <Tab.Screen name="Profile" component={ProfileScreen} />
     <Tab.Screen name="ManageParking" component={ManageParkingScreen} />
     <Tab.Screen name="CheckParking" component={CheckParkingScreen} options={{ title: 'Check Parking' }} />
+    <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
   </Tab.Navigator>
 );
 

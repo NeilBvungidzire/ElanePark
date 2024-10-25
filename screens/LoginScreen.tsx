@@ -16,6 +16,7 @@ import { useAuth } from '../auth/AuthContext';
 import { loginUser } from '../database/database';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import LoadingScreen from './LoadingScreen';
 
 type AuthStackParamList = {
     Login: undefined;
@@ -30,8 +31,10 @@ const LoginScreen = () => {
     const [showPassword, setShowPassword] = useState(false);
     const { signIn } = useAuth();
     const navigation = useNavigation<LoginScreenNavigationProp>();
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleLogin = async () => {
+        setIsLoading(true);
         try {
             const user = await loginUser(email, password);
             if (user) {
@@ -42,12 +45,18 @@ const LoginScreen = () => {
         } catch (error) {
             console.error('Login error:', error);
             Alert.alert('Login Error', 'An error occurred during login');
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const navigateToRegister = () => {
         navigation.navigate('Register');
     };
+
+    if (isLoading) {
+        return <LoadingScreen message="Logging in..." />;
+    }
 
     return (
         <KeyboardAvoidingView 

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, Modal, ScrollView, SafeAreaView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, Modal, ScrollView, SafeAreaView, RefreshControl } from 'react-native';
 import { getAllParkingBays, createParkingBay, updateParkingBay, deleteParkingBay, updateParkingBayAvailability } from '../database/database';
 import { ParkingBay } from '../entity/ParkingBay';
-// Define colors here
+import LoadingScreen from './LoadingScreen';
+
 const colors = {
   primary: '#007AFF',
   background: '#F2F2F7',
@@ -26,6 +27,8 @@ export default function ManageParkingBays() {
     const [longitude, setLongitude] = useState('');
     const [price, setPrice] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [refreshing, setRefreshing] = useState(false);
+    
 
     useEffect(() => {
         fetchParkingBays();
@@ -115,6 +118,10 @@ export default function ManageParkingBays() {
         bay.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    if (isLoading) {
+        return <LoadingScreen message="Loading parking bays..." />;
+    }
+
     const renderParkingBayItem = ({ item }: { item: ParkingBay }) => (
         <View style={styles.parkingItem}>
             <View style={styles.parkingInfo}>
@@ -138,6 +145,18 @@ export default function ManageParkingBays() {
             </View>
         </View>
     );
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await fetchParkingBays();
+        } catch (error) {
+            console.error("Error refreshing parking bays:", error);
+            Alert.alert("Error", "Unable to refresh parking bays");
+        } finally {
+            setRefreshing(false);
+        }
+    }, []);
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -167,6 +186,13 @@ export default function ManageParkingBays() {
                     style={styles.list}
                     ListEmptyComponent={
                         <Text style={styles.emptyText}>No parking bays available</Text>
+                    }
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={[colors.primary]} 
+                        />
                     }
                 />
                 <Modal
@@ -229,7 +255,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 20,
-        paddingTop: 40, // Add extra space at the top
+        paddingTop: 40, 
     },
     title: {
         fontSize: 24,

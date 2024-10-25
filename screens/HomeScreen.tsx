@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Dimensions } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Dimensions, RefreshControl } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/RootStackParamList';
 import { useAuth } from '../auth/AuthContext';
 import MapView, { PROVIDER_GOOGLE, Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import LoadingScreen from './LoadingScreen'; 
 
 const { width, height } = Dimensions.get('window');
 
@@ -12,9 +13,16 @@ export default function HomeScreen() {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
     const { user } = useAuth();
     const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [isLoading, setIsLoading] = useState(true); 
 
     useEffect(() => {
-        (async () => {
+        loadInitialData();
+    }, []);
+
+    const loadInitialData = async () => {
+        setIsLoading(true);
+        try {
             let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 console.error('Permission to access location was denied');
@@ -26,16 +34,35 @@ export default function HomeScreen() {
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude,
             });
-        })();
+        } catch (error) {
+            console.error('Error loading initial data:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await loadInitialData();
+        setRefreshing(false);
     }, []);
 
-    if (!user) {
-        return <Text>Loading...</Text>;
+    if (isLoading || !user) {
+        return <LoadingScreen message="Loading your dashboard..." />;
     }
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={['#4A0E4E']} 
+                    />
+                }
+            >
                 <View style={styles.header}>
                     <Text style={styles.title}>Smart Parking Mobile Application</Text>
                     <Text style={styles.subtitle}>Zimbabwe's E-Parking Solution</Text>

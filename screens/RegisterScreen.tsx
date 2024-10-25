@@ -7,6 +7,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootStackParamList';
 import { createUser } from '../database/database';
+import LoadingScreen from './LoadingScreen';
 
 type RegisterScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -29,6 +30,7 @@ export default function RegisterScreen({ navigation }: { navigation: RegisterScr
         resolver: yupResolver(schema),
     });
     const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     const onSubmit = async (data: IFormInput) => {
         try {
@@ -49,6 +51,10 @@ export default function RegisterScreen({ navigation }: { navigation: RegisterScr
             Alert.alert('Registration Failed', 'An error occurred during registration.');
         }
     };
+
+    if (isLoading) {
+        return <LoadingScreen message="Creating your account..." />;
+    }
 
     return (
         <KeyboardAvoidingView 

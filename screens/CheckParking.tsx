@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, RefreshControl } from 'react-native';
 import { checkCarReservation } from '../database/database';
 import { useAuth } from '../auth/AuthContext';
 import { Reservation } from '../entity/Reservation';
@@ -8,6 +8,7 @@ export default function CheckParking() {
   const { user } = useAuth();
   const [carPlate, setCarPlate] = useState('');
   const [checkResult, setCheckResult] = useState<{ isValid: boolean; reservation?: Reservation } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleCheckReservation = async () => {
     if (!carPlate) {
@@ -30,8 +31,24 @@ export default function CheckParking() {
     }
   };
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setCarPlate('');
+    setCheckResult(null);
+    setRefreshing(false);
+  }, []);
+
   return (
-    <View style={styles.container}>
+    <ScrollView 
+      contentContainerStyle={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#4C1D1C']} 
+        />
+      }
+    >
       <View style={styles.contentContainer}>
         <Text style={styles.title}>Check Parking Reservation</Text>
         <TextInput
@@ -63,7 +80,7 @@ export default function CheckParking() {
       <View style={styles.footer}>
         <Text style={styles.footerText}>© 2024 Built by Elaine Foroma</Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
