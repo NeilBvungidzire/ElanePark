@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, FlatList, TouchableOpacity, Dimensions, Alert, Linking, RefreshControl } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useAuth } from '../auth/AuthContext';
-import { getRecentReservations, getParkingBayById, checkCarReservation, updateReservationStatus } from '../database/database';
+import { getRecentReservations, getParkingBayById, checkCarReservation, updateReservationStatus, cancelUserReservation } from '../database/database';
 import { Reservation } from '../entity/Reservation';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -168,21 +168,64 @@ export default function ProfileScreen() {
         setRefreshing(false);
     }, [user]);
 
-    const renderReservationItem = (item: ReservationWithBayDetails, isPast: boolean) => (
-        <TouchableOpacity onPress={() => handleActivityPress(item.latitude, item.longitude)}>
-            <View style={[styles.activityCard, { backgroundColor: isPast ? COLORS.accent : COLORS.secondary }]}>
-                <Text style={[styles.activityLocation, { color: isPast ? COLORS.text : COLORS.surface }]}>{item.parkingBayName}</Text>
-                <Text style={[styles.activityDate, { color: isPast ? COLORS.text : COLORS.surface }]}>
-                    {new Date(item.startTime).toLocaleString()} - {new Date(item.endTime).toLocaleString()}
-                </Text>
-                <Text style={[styles.activityStatus, { color: isPast ? COLORS.text : COLORS.surface }]}>
-                    Status: <Text style={item.status === 'active' ? styles.completedStatus : styles.cancelledStatus}>
-                    {item.status}
-                </Text>
-                </Text>
-            </View>
-        </TouchableOpacity>
-    );
+    const handleCancelReservation = async (reservation: ReservationWithBayDetails) => {
+        Alert.alert(
+            "Cancel Reservation",
+            "Are you sure you want to cancel this reservation?",
+            [
+                { text: "No", style: "cancel" },
+                {
+                    text: "Yes",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            setIsLoading(true);
+                            await cancelUserReservation(reservation.id!);
+                            Alert.alert("Success", "Reservation cancelled successfully");
+                            await loadRecentActivities();
+                            await checkActiveReservation();
+                        } catch (error: any) {
+                            Alert.alert("Error", error.message || "Failed to cancel reservation");
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const renderReservationItem = (item: ReservationWithBayDetails, isPast: boolean) => {
+        const now = new Date();
+        const startTime = new Date(item.startTime);
+        const canCancel = !isPast && now < startTime && item.status === 'active';
+
+        return (
+            <TouchableOpacity onPress={() => handleActivityPress(item.latitude, item.longitude)}>
+                <View style={[styles.activityCard, { backgroundColor: isPast ? COLORS.accent : COLORS.secondary }]}>
+                    <Text style={[styles.activityLocation, { color: isPast ? COLORS.text : COLORS.surface }]}>
+                        {item.parkingBayName}
+                    </Text>
+                    <Text style={[styles.activityDate, { color: isPast ? COLORS.text : COLORS.surface }]}>
+                        {new Date(item.startTime).toLocaleString()} - {new Date(item.endTime).toLocaleString()}
+                    </Text>
+                    <Text style={[styles.activityStatus, { color: isPast ? COLORS.text : COLORS.surface }]}>
+                        Status: <Text style={item.status === 'active' ? styles.completedStatus : styles.cancelledStatus}>
+                            {item.status}
+                        </Text>
+                    </Text>
+                    {canCancel && (
+                        <TouchableOpacity 
+                            style={styles.cancelButton}
+                            onPress={() => handleCancelReservation(item)}
+                        >
+                            <Text style={styles.cancelButtonText}>Cancel Reservation</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     if (isLoading) {
         return <LoadingScreen message="Loading your profile..." />;
@@ -424,5 +467,17 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         textAlign: 'center',
         marginTop: 10,
+    },
+    cancelButton: {
+        backgroundColor: '#FF3B30',
+        padding: 8,
+        borderRadius: 5,
+        marginTop: 8,
+        alignSelf: 'flex-start',
+    },
+    cancelButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: 'bold',
     },
 });

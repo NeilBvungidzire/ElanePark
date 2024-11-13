@@ -502,6 +502,34 @@ export const getReservationsForParkingBay = async (parkingBayId: number, date: s
   }
 };
 
+export const cancelUserReservation = async (reservationId: number): Promise<void> => {
+  try {
+    const reservationRepository = dataSource.getRepository(Reservation);
+    const reservation = await reservationRepository.findOne({
+      where: { id: reservationId }
+    });
+
+    if (!reservation) {
+      throw new Error('Reservation not found');
+    }
+
+    const now = new Date();
+    const startTime = new Date(reservation.startTime);
+    
+    if (now >= startTime) {
+      throw new Error('Cannot cancel an ongoing or past reservation');
+    }
+
+    await reservationRepository.update(reservationId, { status: 'cancelled' });
+  } catch (error: any) {
+    console.error('Error cancelling reservation:', error);
+    throw new DatabaseError('Failed to cancel reservation');
+  }
+};
+
+
+
+
 
 
 
